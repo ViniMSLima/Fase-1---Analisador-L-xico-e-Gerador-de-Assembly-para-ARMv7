@@ -9,6 +9,7 @@
 #include <stack>    // Pilha
 #include <map>      // Dicionário
 #include <cmath>    // pow() e fmod()
+#include <set>      // Para criar o .s 
 
 struct Token {
         std::string tipo; 
@@ -18,6 +19,22 @@ struct Token {
 // Variáveis globais
 std::map<std::string, double> memoriaVariaveis;
 std::vector<double> historicoRES;
+
+void lerArquivo(std::string nomeArquivo, std::vector<std::string>& linhas) {
+    std::ifstream arquivo(nomeArquivo);
+    if (!arquivo.is_open()) {
+        std::cout << "ERRO: Nao foi possivel abrir o arquivo: " << nomeArquivo << std::endl;
+        return;
+    }
+
+    std::string linha;
+    while (std::getline(arquivo, linha)) {
+        if (!linha.empty()) {
+            linhas.push_back(linha);
+        }
+    }
+    arquivo.close();
+}
 
 //// ALUNO 1
 
@@ -285,52 +302,178 @@ void testarExecucao() {
     std::cout << "FIM DOS TESTE" << std::endl;
 }
 
-//// MAIN
+//// ALUNO 3
+std::string gerarAssembly(const std::vector<std::vector<Token>>& todasAsLinhas) {
+    std::string code = ".text\n.global _start\n\n_start:\n";
+    std::set<std::string> literais; // Para guardar todos os números únicos
 
-int main(int argc, char* argv[]) {
-    // Validações Iniciais
-    if(argc != 2) {
-        std::cout << "Erro! Para executar esse codigo e necessario escrever da seguinte forma: ./codigofonte <arquivo_de_teste.txt>" << std::endl;
-        return 1;
-    }
-
-    std::ifstream arquivo(argv[1]);
-    if (!arquivo.is_open()) {
-        std::cout << "Erro: Nao foi possivel abrir o arquivo " << argv[1] << std::endl;
-        return 1;
-    }
-
-    std::string linha;
-    std::vector<Token> listaGeralParaArquivo;
-
-    // Loop de Processamento
-    while (std::getline(arquivo, linha)) {
-        std::vector<Token> tokensDaLinha; // Vetor vazio para cada linha
+    // --- 1. GERAR INSTRUÇÕES ---
+    for (int i = 0; i < todasAsLinhas.size(); i++) {
+        code += "\n    @ --- Linha " + std::to_string(i) + " ---\n";
         
-        // Aluno 1
+        for (size_t j = 0; j < todasAsLinhas[i].size(); j++) {
+            Token t = todasAsLinhas[i][j];
+
+            if (t.tipo == "NUMERO") {
+                literais.insert(t.valor); // Guarda o número para o .data
+                
+                // Nome da label (ex: 3.14 -> lit_3_14)
+                std::string labelNum = t.valor;
+                for(char &c : labelNum) if(c == '.') c = '_';
+
+                code += "    LDR R0, =lit_" + labelNum + "    @ Carrega o endereço da label\n";
+                code += "    VLDR.F64 D0, [R0]               @ Busca o valor double no endereço\n";
+                code += "    VPUSH {D0}\n";
+            }
+            else if (t.tipo == "OPERADOR") {
+                code += "    VPOP {D1}    @ B\n";
+                code += "    VPOP {D0}    @ A\n";
+
+                if (t.valor == "+")      code += "    VADD.F64 D2, D0, D1\n";
+                else if (t.valor == "-") code += "    VSUB.F64 D2, D0, D1\n";
+                else if (t.valor == "*") code += "    VMUL.F64 D2, D0, D1\n";
+                else if (t.valor == "/") code += "    VDIV.F64 D2, D0, D1\n";
+                else if (t.valor == "//")
+                {
+                    code += "    VDIV.F64 D2, D0, D1\n";
+                    code += "    VCVT.S32.F64 S4, D2    @ Trunca as casas decimais\n";
+                    code += "    VCVT.F64.S32 D2, S4    @ Converte de volta para Double\n";
+                }
+                else if (t.valor == "%") 
+                {
+                    code += "    VDIV.F64 D2, D0, D1    @ a / b\n";
+                    code += "    VCVT.S32.F64 S4, D2    @ floor(a/b)\n";
+                    code += "    VCVT.F64.S32 D2, S4    \n";
+                    code += "    VMUL.F64 D2, D2, D1    @ (floor(a/b) * b)\n";
+                    code += "    VSUB.F64 D2, D0, D2    @ a - (resultado acima)\n";
+                }
+                else if (t.valor == "^")
+                {
+                    std::string label_id = std::to_string(i) + "_" + std::to_string(j);
+                    code += "    VMOV.F64 D2, #1.0      @ Acumulador da potencia\n";
+                    code += "    VCVT.S32.F64 S4, D1    @ Converte expoente para int\n";
+                    code += "    VMOV R1, S4            @ R1 = contador do loop\n";
+                    code += "    CMP R1, #0\n";
+                    code += "    BEQ pow_end_" + label_id + "\n";
+                    code += "    pow_loop_" + label_id + ":\n";
+                    code += "    VMUL.F64 D2, D2, D0    @ acc = acc * base\n";
+                    code += "    SUBS R1, R1, #1        @ decrementa contador\n";
+                    code += "    BNE pow_loop_" + label_id + "\n";
+                    code += "    pow_end_" + label_id + ":\n";
+                }
+                
+                code += "    VPUSH {D2}\n";
+            }
+            else if (t.tipo == "VARIAVEL") {
+                // Atribuição: (10.0 X MEM)
+                if (j + 1 < todasAsLinhas[i].size() && todasAsLinhas[i][j+1].valor == "MEM") {
+                    code += "    VPOP {D0}            @ Tira da pilha para salvar\n";
+                    code += "    VPUSH {D0}           @ DEVOLVE para a pilha (para o RES_HISTORY no final)\n";
+                    code += "    LDR R0, =" + t.valor + "\n";
+                    code += "    VSTR.F64 D0, [R0]    @ Salva na variavel " + t.valor + "\n";
+                    j++; // Pula o token MEM
+                } 
+                // Busca: (X 5.0 +)
+                else {
+                    code += "    LDR R0, =" + t.valor + "\n";
+                    code += "    VLDR.F64 D0, [R0]    @ Busca o valor de " + t.valor + "\n";
+                    code += "    VPUSH {D0}           @ Coloca na pilha para a conta\n";
+                }
+            }
+            else if (t.tipo == "KEYWORD" && t.valor == "RES") {
+                code += "    VPOP {D0}            @ Indice do RES\n";
+                code += "    VCVT.S32.F64 S0, D0  @ Double para Int\n";
+                code += "    VMOV R1, S0\n";
+                code += "    LSL R1, R1, #3       @ Indice * 8 bytes\n";
+                code += "    LDR R0, =res_history\n";
+                code += "    VLDR.F64 D0, [R0, R1]\n";
+                code += "    VPUSH {D0}\n";
+            }
+        }
+        // Salva resultado final da linha no histórico
+        code += "    VPOP {D0}\n";
+        code += "    LDR R0, =res_history\n";
+        code += "    VSTR.F64 D0, [R0, #" + std::to_string(i * 8) + "]\n";
+    }
+
+    // Fim do programa
+    code += "\n    MOV R7, #1\n    SWI 0\n";
+
+    // --- 2. SEÇÃO DE DADOS (.data) ---
+    code += "\n.data\n.align 3\n";
+    
+    // Histórico RES
+    code += "res_history: .skip " + std::to_string(todasAsLinhas.size() * 8) + "\n";
+
+    // Variáveis MEM (do mapa global)
+    for (auto const& [nome, valor] : memoriaVariaveis) {
+        code += nome + ": .double 0.0\n";
+    }
+
+    // Literais (Números únicos coletados)
+    code += "@ Literais Numericos\n";
+    for (const std::string& num : literais) {
+        std::string labelNum = num;
+        for(char &c : labelNum) if(c == '.') c = '_';
+        code += "lit_" + labelNum + ": .double " + num + "\n";
+    }
+
+    return code;
+}
+
+//// MAIN
+int main(int argc, char* argv[]) {
+    // 1. Validação de Argumentos
+    if(argc != 2) {
+        std::cout << "Erro! Use: ./codigofonte <arquivo.txt>" << std::endl;
+        return 1;
+    }
+
+    // --- MUDANÇA AQUI: Usando a função lerArquivo ---
+    std::vector<std::string> linhasDoArquivo;
+    lerArquivo(argv[1], linhasDoArquivo); 
+
+    // Se o arquivo estiver vazio ou não abrir, a função lerArquivo já avisa
+    if (linhasDoArquivo.empty()) return 1;
+
+    std::vector<Token> listaGeralParaArquivo;
+    std::vector<std::vector<Token>> todasAsLinhas; 
+
+    // 2. Processamento das Linhas (Agora percorrendo o vetor de strings)
+    for (const std::string& linha : linhasDoArquivo) {
+        std::vector<Token> tokensDaLinha;
+        
         parseExpressao(linha, tokensDaLinha);
 
-        // Aluno 2
         if (!tokensDaLinha.empty()) {
-            executarExpressao(tokensDaLinha);
+            executarExpressao(tokensDaLinha); // Simulação do Aluno 2
+            
+            todasAsLinhas.push_back(tokensDaLinha); // Guarda para o Aluno 3
 
-            // Guardar tokens na lista geral para o arquivo txt
             for (const auto& t : tokensDaLinha) {
                 listaGeralParaArquivo.push_back(t);
             }
         }
     }
 
-    arquivo.close();
+    // 3. Geração do Assembly (Aluno 3)
+    std::string assemblyFinal = gerarAssembly(todasAsLinhas);
+    
+    std::ofstream arqAsm("saida.s");
+    if (arqAsm.is_open()) {
+        arqAsm << assemblyFinal;
+        arqAsm.close();
+        std::cout << "\n[OK] Arquivo Assembly 'saida.s' gerado!" << std::endl;
+    }
 
-    // Salvar os Tokens
+    // 4. Salvar Tokens (Relatório do Aluno 1)
     std::ofstream arquivoSaida("tokens.txt");
     if (arquivoSaida.is_open()) {
-        for (int i = 0; i < listaGeralParaArquivo.size(); i++) {
-            arquivoSaida << listaGeralParaArquivo[i].tipo << "," << listaGeralParaArquivo[i].valor << "\n";
+        for (const auto& t : listaGeralParaArquivo) {
+            arquivoSaida << t.tipo << "," << t.valor << "\n";
         }
         arquivoSaida.close();
-        std::cout << "Tokens salvos em 'tokens.txt'!" << std::endl;
+        std::cout << "[OK] Tokens salvos em 'tokens.txt'!" << std::endl;
     }
 
     return 0;
