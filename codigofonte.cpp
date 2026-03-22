@@ -2,16 +2,24 @@
 // Grupo RA1 20 
 
 #include <iostream> // Printar no terminal
-#include <fstream> // Arquivos
-#include <string>  // Linhas de texto lidas
-#include <cctype> // isdigit() e isalpha()
-#include <vector> // Para guardar os tokens em vetor
+#include <fstream>  // Arquivos
+#include <string>   // Linhas de texto lidas
+#include <cctype>   // isdigit() e isalpha()
+#include <vector>   // Para guardar os tokens em vetor e histórico RES
+#include <stack>    // Pilha
+#include <map>      // Dicionário
+#include <cmath>    // pow() e fmod()
 
 struct Token {
         std::string tipo; 
         std::string valor;
     };
 
+// Variáveis globais
+std::map<std::string, double> memoriaVariaveis;
+std::vector<double> historicoRES;
+
+//// ALUNO 1
 
 Token estadoLendoNumero(const std::string& linha, int& posicao) {
     std::string valor = "";
@@ -77,7 +85,6 @@ Token estadoLendoBarra(const std::string& linha, int& posicao) {
     return {"OPERADOR", "/"};
 }
 
-// Estado Inicial
 Token estadoInicial(const std::string& linha, int& posicao) {
     // Ignorar espaços
     while (posicao < linha.length() && isspace(linha[posicao])) {
@@ -118,7 +125,6 @@ Token estadoInicial(const std::string& linha, int& posicao) {
     }
 }
 
-// Função do Aluno 1
 void parseExpressao(std::string linha, std::vector<Token>& tokensDaLinha) {
     int posicao = 0;
     
@@ -167,44 +173,165 @@ void testarAnalisadorLexico() {
     std::cout << "FIM DO TESTE" << std::endl;
 }
 
-int main(int argc, char* argv[]) {
 
+//// ALUNO 2
+void executarExpressao(const std::vector<Token>& tokens) {
+    std::stack<double> pilha;
+    int contadorParenteses = 0; // Validar parênteses
+
+    for (size_t i = 0; i < tokens.size(); ++i) {
+        Token t = tokens[i];
+
+        // Validar parênteses
+        if (t.tipo == "PARENTE") {
+            if (t.valor == "(") contadorParenteses++;
+            else contadorParenteses--;
+            continue; // Parêntese não vai para a pilha
+        }
+
+        if (t.tipo == "NUMERO") {
+            pilha.push(std::stod(t.valor));
+        }
+        else if (t.tipo == "OPERADOR") {
+            if (pilha.size() < 2) {
+                std::cout << "ERRO: Pilha insuficiente para operar " << t.valor << std::endl;
+                return;
+            }
+            double b = pilha.top(); pilha.pop();
+            double a = pilha.top(); pilha.pop();
+
+            if (t.valor == "+") pilha.push(a + b);
+            else if (t.valor == "-") pilha.push(a - b);
+            else if (t.valor == "*") pilha.push(a * b);
+            else if (t.valor == "/") {
+                if (b == 0) { std::cout << "ERRO: Divisao real por zero!" << std::endl; return; }
+                pilha.push(a / b);
+            }
+            else if (t.valor == "//") {
+                if (b == 0) { std::cout << "ERRO: Divisao inteira por zero!" << std::endl; return; }
+                pilha.push(std::floor(a / b));
+            }
+            else if (t.valor == "%") {
+                if (b == 0) { std::cout << "ERRO: Resto por zero!" << std::endl; return; }
+                pilha.push(std::fmod(a, b));
+            }
+            else if (t.valor == "^") {
+                pilha.push(std::pow(a, b));
+            }
+        }
+        else if (t.tipo == "VARIAVEL") {
+            if (i + 1 < tokens.size() && tokens[i+1].valor == "MEM") {
+                if (!pilha.empty()) {
+                    memoriaVariaveis[t.valor] = pilha.top();
+                    i++; 
+                }
+            } else {
+                if (memoriaVariaveis.count(t.valor)) {
+                    pilha.push(memoriaVariaveis[t.valor]);
+                } else {
+                    std::cout << "ERRO: Variavel " << t.valor << " nao iniciada." << std::endl;
+                    return;
+                }
+            }
+        }
+        else if (t.tipo == "KEYWORD" && t.valor == "RES") {
+            if (!pilha.empty()) {
+                int indice = (int)pilha.top(); pilha.pop();
+                if (indice >= 0 && indice < (int)historicoRES.size()) {
+                    pilha.push(historicoRES[indice]);
+                } else {
+                    std::cout << "ERRO: Indice RES " << indice << " invalido." << std::endl;
+                    return;
+                }
+            }
+        }
+    }
+
+    // Checagem de parênteses no fim da linha
+    if (contadorParenteses != 0) {
+        std::cout << "ERRO: Parenteses desbalanceados na linha!" << std::endl;
+        return;
+    }
+
+    if (!pilha.empty()) {
+        double final = pilha.top();
+        historicoRES.push_back(final);
+        std::cout << "SIMULACAO: Resultado = " << final << std::endl;
+    }
+}
+
+void testarExecucao() {
+    std::cout << "TESTES DE EXECUCAO" << std::endl;
+    
+    // Resetando para o teste
+    memoriaVariaveis.clear();
+    historicoRES.clear();
+
+    // Matemática básica e histórico
+    std::cout << "Teste 1: ( 5 2 + )" << std::endl;
+    std::vector<Token> t1 = {{"PARENTE","("}, {"NUMERO","5"}, {"NUMERO","2"}, {"OPERADOR","+"}, {"PARENTE",")"}};
+    executarExpressao(t1); // Deve dar 7
+
+    // Memória
+    std::cout << "\nTeste 2: ( 10 X MEM )" << std::endl;
+    std::vector<Token> t2 = {{"PARENTE","("}, {"NUMERO","10"}, {"VARIAVEL","X"}, {"VARIAVEL","MEM"}, {"PARENTE",")"}};
+    executarExpressao(t2); // X vira 10
+
+    // Uso de variável e RES
+    std::cout << "\nTeste 3: ( X 0 RES * )" << std::endl;
+    std::vector<Token> t3 = {{"PARENTE","("}, {"VARIAVEL","X"}, {"NUMERO","0"}, {"KEYWORD","RES"}, {"OPERADOR","*"}, {"PARENTE",")"}};
+    executarExpressao(t3); // 10 * 7 = 70
+
+    std::cout << "FIM DOS TESTE" << std::endl;
+}
+
+//// MAIN
+
+int main(int argc, char* argv[]) {
+    // Validações Iniciais
     if(argc != 2) {
         std::cout << "Erro! Para executar esse codigo e necessario escrever da seguinte forma: ./codigofonte <arquivo_de_teste.txt>" << std::endl;
         return 1;
     }
 
     std::ifstream arquivo(argv[1]);
-
     if (!arquivo.is_open()) {
         std::cout << "Erro: Nao foi possivel abrir o arquivo " << argv[1] << std::endl;
         return 1;
     }
 
     std::string linha;
-    std::vector<Token> listaDeTokens; // Lista de tokes vazia
+    std::vector<Token> listaGeralParaArquivo;
 
+    // Loop de Processamento
     while (std::getline(arquivo, linha)) {
-        parseExpressao(linha, listaDeTokens);
+        std::vector<Token> tokensDaLinha; // Vetor vazio para cada linha
+        
+        // Aluno 1
+        parseExpressao(linha, tokensDaLinha);
+
+        // Aluno 2
+        if (!tokensDaLinha.empty()) {
+            executarExpressao(tokensDaLinha);
+
+            // Guardar tokens na lista geral para o arquivo txt
+            for (const auto& t : tokensDaLinha) {
+                listaGeralParaArquivo.push_back(t);
+            }
+        }
     }
 
     arquivo.close();
 
+    // Salvar os Tokens
     std::ofstream arquivoSaida("tokens.txt");
-
     if (arquivoSaida.is_open()) {
-        // Cada token da lista
-        for (int i = 0; i < listaDeTokens.size(); i++) {
-            // Escreve no arquivo
-            arquivoSaida << listaDeTokens[i].tipo << "," << listaDeTokens[i].valor << "\n";
+        for (int i = 0; i < listaGeralParaArquivo.size(); i++) {
+            arquivoSaida << listaGeralParaArquivo[i].tipo << "," << listaGeralParaArquivo[i].valor << "\n";
         }
         arquivoSaida.close();
         std::cout << "Tokens salvos em 'tokens.txt'!" << std::endl;
-    } else {
-        std::cout << "Erro ao criar arquivo de saida." << std::endl;
     }
-
-    //testarAnalisadorLexico();
 
     return 0;
 }
