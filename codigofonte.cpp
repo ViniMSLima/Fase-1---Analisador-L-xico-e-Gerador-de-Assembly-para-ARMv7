@@ -305,176 +305,182 @@ void testarExecucao() {
 //// ALUNO 3
 std::string gerarAssembly(const std::vector<std::vector<Token>>& todasAsLinhas) {
     std::string code = ".text\n.global _start\n\n_start:\n";
-    std::set<std::string> literais; // Para guardar todos os números únicos
 
-    // --- 1. GERAR INSTRUÇÕES ---
-    for (int i = 0; i < todasAsLinhas.size(); i++) {
+    // --- INICIALIZAÇÃO ---
+    code += "    @ Inicializacao: Pilha e FPU\n";
+    code += "    LDR SP, =0x20000\n";
+    code += "    LDR R0, =(0xF << 20)\n    MCR P15, 0, R0, C1, C0, 2\n    ISB\n";
+    code += "    VMRS R0, FPEXC\n    ORR  R0, R0, #0x40000000\n    VMSR FPEXC, R0\n\n";
+    
+    std::set<std::string> literais; 
+    literais.insert("1.0"); // Garantir que o 1.0 existe para nossos loops
+    literais.insert("0.0");
+
+    for (int i = 0; i < (int)todasAsLinhas.size(); i++) {
         code += "\n    @ --- Linha " + std::to_string(i) + " ---\n";
         
         for (size_t j = 0; j < todasAsLinhas[i].size(); j++) {
             Token t = todasAsLinhas[i][j];
 
             if (t.tipo == "NUMERO") {
-                literais.insert(t.valor); // Guarda o número para o .data
-                
-                // Nome da label (ex: 3.14 -> lit_3_14)
+                literais.insert(t.valor);
                 std::string labelNum = t.valor;
                 for(char &c : labelNum) if(c == '.') c = '_';
-
-                code += "    LDR R0, =lit_" + labelNum + "    @ Carrega o endereço da label\n";
-                code += "    VLDR.F64 D0, [R0]               @ Busca o valor double no endereço\n";
-                code += "    VPUSH {D0}\n";
+                code += "    LDR R0, =lit_" + labelNum + "\n    VLDR.F64 D0, [R0]\n    VPUSH {D0}\n";
             }
+            
             else if (t.tipo == "OPERADOR") {
-                code += "    VPOP {D1}    @ B\n";
-                code += "    VPOP {D0}    @ A\n";
+                code += "    VPOP {D1}    @ B\n    VPOP {D0}    @ A\n";
 
                 if (t.valor == "+")      code += "    VADD.F64 D2, D0, D1\n";
                 else if (t.valor == "-") code += "    VSUB.F64 D2, D0, D1\n";
                 else if (t.valor == "*") code += "    VMUL.F64 D2, D0, D1\n";
                 else if (t.valor == "/") code += "    VDIV.F64 D2, D0, D1\n";
-                else if (t.valor == "//")
-                {
-                    code += "    VDIV.F64 D2, D0, D1\n";
-                    code += "    VCVT.S32.F64 S4, D2    @ Trunca as casas decimais\n";
-                    code += "    VCVT.F64.S32 D2, S4    @ Converte de volta para Double\n";
-                }
-                else if (t.valor == "%") 
-                {
-                    code += "    VDIV.F64 D2, D0, D1    @ a / b\n";
-                    code += "    VCVT.S32.F64 S4, D2    @ floor(a/b)\n";
-                    code += "    VCVT.F64.S32 D2, S4    \n";
-                    code += "    VMUL.F64 D2, D2, D1    @ (floor(a/b) * b)\n";
-                    code += "    VSUB.F64 D2, D0, D2    @ a - (resultado acima)\n";
-                }
-                else if (t.valor == "^")
-                {
-                    std::string label_id = std::to_string(i) + "_" + std::to_string(j);
-                    code += "    VMOV.F64 D2, #1.0      @ Acumulador da potencia\n";
-                    code += "    VCVT.S32.F64 S4, D1    @ Converte expoente para int\n";
-                    code += "    VMOV R1, S4            @ R1 = contador do loop\n";
-                    code += "    CMP R1, #0\n";
-                    code += "    BEQ pow_end_" + label_id + "\n";
-                    code += "    pow_loop_" + label_id + ":\n";
-                    code += "    VMUL.F64 D2, D2, D0    @ acc = acc * base\n";
-                    code += "    SUBS R1, R1, #1        @ decrementa contador\n";
-                    code += "    BNE pow_loop_" + label_id + "\n";
-                    code += "    pow_end_" + label_id + ":\n";
-                }
                 
+                // --- Divisão Inteira (//) e Resto (%) sem usar VCVT ---
+                else if (t.valor == "//" || t.valor == "%") {
+                    std::string lid = std::to_string(i) + "_" + std::to_string(j);
+                    code += "    VDIV.F64 D2, D0, D1      @ D2 = resultado real\n";
+                    code += "    LDR R0, =lit_0_0\n    VLDR.F64 D3, [R0]        @ Acumulador floor\n";
+                    code += "    LDR R0, =lit_1_0\n    VLDR.F64 D4, [R0]        @ Passo 1.0\n";
+                    code += "    @ Loop de Truncamento manual\n";
+                    code += "trunc_l_" + lid + ":\n";
+                    code += "    VADD.F64 D5, D3, D4\n";
+                    code += "    VCMP.F64 D5, D2\n";
+                    code += "    VMRS APSR_nzcv, FPSCR\n";
+                    code += "    BGT trunc_e_" + lid + "    @ Se passar do valor, para\n";
+                    code += "    VMOV.F64 D3, D5\n";
+                    code += "    B trunc_l_" + lid + "\n";
+                    code += "trunc_e_" + lid + ":\n";
+                    
+                    if (t.valor == "//") {
+                        code += "    VMOV.F64 D2, D3          @ D2 recebe o floor\n";
+                    } else {
+                        code += "    VMUL.F64 D3, D3, D1      @ floor * b\n";
+                        code += "    VSUB.F64 D2, D0, D3      @ a - (floor * b)\n";
+                    }
+                }
+                else if (t.valor == "^") {
+                    std::string lid = std::to_string(i) + "_" + std::to_string(j);
+                    code += "    VMOV.F64 D2, #1.0\n";
+                    code += "    MOV R1, #0\n    LDR R0, =lit_0_0\n    VLDR.F64 D4, [R0]\n    LDR R0, =lit_1_0\n    VLDR.F64 D5, [R0]\n";
+                    code += "pow_l_" + lid + ":\n";
+                    code += "    VCMP.F64 D4, D1\n    VMRS APSR_nzcv, FPSCR\n    BGE pow_e_" + lid + "\n";
+                    code += "    VMUL.F64 D2, D2, D0\n    VADD.F64 D4, D4, D5\n    B pow_l_" + lid + "\n";
+                    code += "pow_e_" + lid + ":\n";
+                }
                 code += "    VPUSH {D2}\n";
             }
+
             else if (t.tipo == "VARIAVEL") {
-                // Atribuição: (10.0 X MEM)
                 if (j + 1 < todasAsLinhas[i].size() && todasAsLinhas[i][j+1].valor == "MEM") {
-                    code += "    VPOP {D0}            @ Tira da pilha para salvar\n";
-                    code += "    VPUSH {D0}           @ DEVOLVE para a pilha (para o RES_HISTORY no final)\n";
-                    code += "    LDR R0, =" + t.valor + "\n";
-                    code += "    VSTR.F64 D0, [R0]    @ Salva na variavel " + t.valor + "\n";
-                    j++; // Pula o token MEM
-                } 
-                // Busca: (X 5.0 +)
-                else {
-                    code += "    LDR R0, =" + t.valor + "\n";
-                    code += "    VLDR.F64 D0, [R0]    @ Busca o valor de " + t.valor + "\n";
-                    code += "    VPUSH {D0}           @ Coloca na pilha para a conta\n";
+                    code += "    VPOP {D0}\n    VPUSH {D0}\n";
+                    code += "    LDR R0, =" + t.valor + "\n    VSTR.F64 D0, [R0]\n";
+                    j++; 
+                } else {
+                    code += "    LDR R0, =" + t.valor + "\n    VLDR.F64 D0, [R0]\n    VPUSH {D0}\n";
                 }
             }
+
             else if (t.tipo == "KEYWORD" && t.valor == "RES") {
-                code += "    VPOP {D0}            @ Indice do RES\n";
-                code += "    VCVT.S32.F64 S0, D0  @ Double para Int\n";
-                code += "    VMOV R1, S0\n";
-                code += "    LSL R1, R1, #3       @ Indice * 8 bytes\n";
-                code += "    LDR R0, =res_history\n";
-                code += "    VLDR.F64 D0, [R0, R1]\n";
+                std::string lid = std::to_string(i) + "_" + std::to_string(j);
+                code += "    VPOP {D0}                @ Valor do indice (float)\n";
+                code += "    MOV R1, #0               @ Contador inteiro (resultado final)\n";
+                code += "    LDR R0, =lit_0_0\n    VLDR.F64 D6, [R0]        @ Contador float aux\n";
+                code += "    LDR R0, =lit_1_0\n    VLDR.F64 D7, [R0]        @ Passo 1.0\n";
+                
+                code += "res_l_" + lid + ":\n";
+                code += "    VCMP.F64 D6, D0          @ Compara: contador >= indice?\n";
+                code += "    VMRS APSR_nzcv, FPSCR\n";
+                code += "    BGE res_e_" + lid + "    @ Se ja chegou no indice, sai\n";
+                code += "    ADD R1, R1, #1           @ Incrementa R1 (inteiro)\n";
+                code += "    VADD.F64 D6, D6, D7      @ Incrementa D6 (float)\n";
+                code += "    B res_l_" + lid + "\n";
+                code += "res_e_" + lid + ":\n";
+                
+                code += "    LSL R1, R1, #3           @ R1 = R1 * 8 bytes (Offset)\n";
+                code += "    LDR R0, =res_history     @ R0 = Endereco base do historico\n";
+                code += "    ADD R0, R0, R1           @ R0 = Base + Offset\n"; 
+                code += "    VLDR.F64 D0, [R0]        @ Busca o valor no endereco exato\n";
                 code += "    VPUSH {D0}\n";
             }
         }
-        // Salva resultado final da linha no histórico
-        code += "    VPOP {D0}\n";
-        code += "    LDR R0, =res_history\n";
-        code += "    VSTR.F64 D0, [R0, #" + std::to_string(i * 8) + "]\n";
+        code += "    VPOP {D0}\n    LDR R0, =res_history\n    VSTR.F64 D0, [R0, #" + std::to_string(i * 8) + "]\n";
     }
 
-    // Fim do programa
-    code += "\n    MOV R7, #1\n    SWI 0\n";
+    code += "\n    B .\n";
 
-    // --- 2. SEÇÃO DE DADOS (.data) ---
     code += "\n.data\n.align 3\n";
-    
-    // Histórico RES
     code += "res_history: .skip " + std::to_string(todasAsLinhas.size() * 8) + "\n";
-
-    // Variáveis MEM (do mapa global)
-    for (auto const& [nome, valor] : memoriaVariaveis) {
-        code += nome + ": .double 0.0\n";
-    }
-
-    // Literais (Números únicos coletados)
-    code += "@ Literais Numericos\n";
+    for (auto const& [nome, valor] : memoriaVariaveis) code += nome + ": .double 0.0\n";
+    code += "\n@ Pool de Literais\n";
     for (const std::string& num : literais) {
         std::string labelNum = num;
         for(char &c : labelNum) if(c == '.') c = '_';
         code += "lit_" + labelNum + ": .double " + num + "\n";
     }
-
     return code;
+}
+
+//// ALUNO 4
+void exibirResultados(const std::vector<std::string>& linhas, const std::vector<double>& resultados) {
+    std::cout << "\n" << std::string(60, '=') << "\n";
+    std::cout << "           RELATORIO FINAL - TRADUTOR RPN -> ARMv7\n";
+    std::cout << std::string(60, '=') << "\n";
+    printf(" %-4s | %-32s | %-10s\n", "ID", "EXPRESSAO", "RESULTADO");
+    std::cout << std::string(60, '-') << "\n";
+
+    for (size_t i = 0; i < linhas.size(); ++i) {
+        if (i < resultados.size()) {
+            printf(" %02zu   | %-32s | %.4f\n", i, linhas[i].c_str(), resultados[i]);
+        }
+    }
+    std::cout << std::string(60, '=') << "\n";
+    std::cout << "[INFO] Arquivos 'saida.s' e 'tokens.txt' atualizados.\n";
 }
 
 //// MAIN
 int main(int argc, char* argv[]) {
-    // 1. Validação de Argumentos
+    // 1. Validação de Argumento (Essencial para Aluno 4)
     if(argc != 2) {
-        std::cout << "Erro! Use: ./codigofonte <arquivo.txt>" << std::endl;
+        std::cout << "--------------------------------------------------" << std::endl;
+        std::cout << "ERRO: Arquivo de entrada nao fornecido!" << std::endl;
+        std::cout << "Uso: ./meu_compilador teste.txt" << std::endl;
+        std::cout << "--------------------------------------------------" << std::endl;
         return 1;
     }
 
-    // --- MUDANÇA AQUI: Usando a função lerArquivo ---
-    std::vector<std::string> linhasDoArquivo;
-    lerArquivo(argv[1], linhasDoArquivo); 
+    // 2. Leitura (Aluno 3)
+    std::vector<std::string> linhas;
+    lerArquivo(argv[1], linhas);
+    if (linhas.empty()) return 1;
 
-    // Se o arquivo estiver vazio ou não abrir, a função lerArquivo já avisa
-    if (linhasDoArquivo.empty()) return 1;
+    std::vector<std::vector<Token>> todasAsLinhas;
+    std::vector<Token> listaGeralTokens;
 
-    std::vector<Token> listaGeralParaArquivo;
-    std::vector<std::vector<Token>> todasAsLinhas; 
-
-    // 2. Processamento das Linhas (Agora percorrendo o vetor de strings)
-    for (const std::string& linha : linhasDoArquivo) {
-        std::vector<Token> tokensDaLinha;
-        
-        parseExpressao(linha, tokensDaLinha);
-
-        if (!tokensDaLinha.empty()) {
-            executarExpressao(tokensDaLinha); // Simulação do Aluno 2
-            
-            todasAsLinhas.push_back(tokensDaLinha); // Guarda para o Aluno 3
-
-            for (const auto& t : tokensDaLinha) {
-                listaGeralParaArquivo.push_back(t);
-            }
+    // 3. Processamento (Alunos 1 e 2)
+    for (const std::string& l : linhas) {
+        std::vector<Token> tokens;
+        parseExpressao(l, tokens);
+        if (!tokens.empty()) {
+            executarExpressao(tokens); // Aqui o históricoRES é preenchido
+            todasAsLinhas.push_back(tokens);
+            for(auto t : tokens) listaGeralTokens.push_back(t);
         }
     }
 
-    // 3. Geração do Assembly (Aluno 3)
-    std::string assemblyFinal = gerarAssembly(todasAsLinhas);
-    
-    std::ofstream arqAsm("saida.s");
-    if (arqAsm.is_open()) {
-        arqAsm << assemblyFinal;
-        arqAsm.close();
-        std::cout << "\n[OK] Arquivo Assembly 'saida.s' gerado!" << std::endl;
-    }
+    // 4. Geração de Arquivos (Aluno 3)
+    std::string assembly = gerarAssembly(todasAsLinhas);
+    std::ofstream outAsm("saida.s");
+    outAsm << assembly;
+    outAsm.close();
 
-    // 4. Salvar Tokens (Relatório do Aluno 1)
-    std::ofstream arquivoSaida("tokens.txt");
-    if (arquivoSaida.is_open()) {
-        for (const auto& t : listaGeralParaArquivo) {
-            arquivoSaida << t.tipo << "," << t.valor << "\n";
-        }
-        arquivoSaida.close();
-        std::cout << "[OK] Tokens salvos em 'tokens.txt'!" << std::endl;
-    }
+    std::ofstream outTok("tokens.txt");
+    for(auto t : listaGeralTokens) outTok << t.tipo << "," << t.valor << "\n";
+    outTok.close();
+
+    // 5. EXIBIÇÃO FINAL (A cara do Aluno 4)
+    exibirResultados(linhas, historicoRES);
 
     return 0;
 }
