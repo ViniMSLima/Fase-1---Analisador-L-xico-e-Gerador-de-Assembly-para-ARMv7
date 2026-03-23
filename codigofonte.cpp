@@ -362,8 +362,14 @@ std::string gerarAssembly(const std::vector<std::vector<Token>>& todasAsLinhas) 
                 }
                 else if (t.valor == "^") {
                     std::string lid = std::to_string(i) + "_" + std::to_string(j);
-                    code += "    VMOV.F64 D2, #1.0\n";
+                    
+                    // CORREÇÃO: Carregando 1.0 da memória de forma 100% segura!
+                    code += "    LDR R0, =lit_1_0\n    VLDR.F64 D2, [R0]\n";
+                    
+                    // Configura os contadores
                     code += "    MOV R1, #0\n    LDR R0, =lit_0_0\n    VLDR.F64 D4, [R0]\n    LDR R0, =lit_1_0\n    VLDR.F64 D5, [R0]\n";
+                    
+                    // O Loop (Roda D1 vezes)
                     code += "pow_l_" + lid + ":\n";
                     code += "    VCMP.F64 D4, D1\n    VMRS APSR_nzcv, FPSCR\n    BGE pow_e_" + lid + "\n";
                     code += "    VMUL.F64 D2, D2, D0\n    VADD.F64 D4, D4, D5\n    B pow_l_" + lid + "\n";
