@@ -1,7 +1,25 @@
-# Fase-1---Analisador-L-xico-e-Gerador-de-Assembly-para-ARMv7
-Atividade de Analisador Léxico - Linguagens Formais e Compiladores - Engenharia de Computação
+**Disciplina:** Linguagens Formais e Compiladores - Engenharia de Computação  
+**Grupo:** RA1 20  
+**Autor:** Vinícius Matheus Sary de Lima (ViniMSLima)  
 
-- [x] **Aluno 1:** Analisador Léxico (AFD) e `parseExpressao`
-- [x] **Aluno 2:** Pilha RPN, `executarExpressao` e Mapas de Memória
-- [x] **Aluno 3:** Geração de Código Assembly (.s) e Seção de Dados
-- [x] **Aluno 4:** Interface, Exibição de Resultados e Testes Finais
+## 📌 Detalhes Essenciais
+Este projeto implementa um compilador que traduz expressões matemáticas em Notação Polonesa Reversa (RPN) para código nativo em Assembly ARMv7. O sistema engloba:
+- **Análise Léxica:** Identificação de números, variáveis, operadores matemáticos e palavras-chave.
+- **Simulação Semântica:** Motor de cálculo RPN em C++ para validação lógica e tratamento de erros (ex: divisão por zero).
+- **Geração de Código:** Transpilador para Assembly (`.s`) focado em precisão dupla (IEEE 754) e arquitetura de memória ARMv7.
+
+## 🚀 Como Executar Localmente (C++)
+
+1. **Compilação:** Abra o terminal na pasta do projeto e compile o código-fonte:
+   ```bash
+   g++ main.cpp -o tradutor
+   ```
+
+2. **Execução**: Rode o programa passando o arquivo de texto com as expressões como argumento:
+    ```bash
+    ./tradutor teste.txt
+    ```
+3. Saídas: O programa exibirá o relatório matemático no terminal e gerará dois arquivos na pasta:
+
+- tokens.txt: Listagem do analisador léxico.
+- saida.s: Código-fonte em Assembly gerado.
