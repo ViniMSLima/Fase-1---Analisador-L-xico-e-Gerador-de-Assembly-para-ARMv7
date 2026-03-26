@@ -253,13 +253,21 @@ void executarExpressao(const std::vector<Token>& tokens) {
         }
         else if (t.tipo == "KEYWORD" && t.valor == "RES") {
             if (!pilha.empty()) {
-                int indice = (int)pilha.top(); pilha.pop();
-                if (indice >= 0 && indice < (int)historicoRES.size()) {
-                    pilha.push(historicoRES[indice]);
+                int n = (int)pilha.top(); pilha.pop();
+                
+                // MÁGICA DO ÍNDICE RELATIVO: 
+                // Linha Atual (size) - N linhas para trás
+                int target_idx = historicoRES.size() - n; 
+
+                if (target_idx >= 0 && target_idx < (int)historicoRES.size()) {
+                    pilha.push(historicoRES[target_idx]);
                 } else {
-                    std::cout << "ERRO: Indice RES " << indice << " invalido." << std::endl;
+                    std::cout << "ERRO: Indice RES " << n << " invalido. A linha alvo ainda nao existe." << std::endl;
                     return;
                 }
+            } else {
+                std::cout << "ERRO: Faltou o numero antes do RES!" << std::endl;
+                return;
             }
         }
     }
@@ -387,10 +395,30 @@ std::string gerarAssembly(const std::vector<std::vector<Token>>& todasAsLinhas) 
 
             else if (t.tipo == "KEYWORD" && t.valor == "RES") {
                 std::string lid = std::to_string(i) + "_" + std::to_string(j);
-                code += "    VPOP {D0}                @ Valor do indice (float)\n";
-                code += "    MOV R1, #0               @ Contador inteiro (resultado final)\n";
-                code += "    LDR R0, =lit_0_0\n    VLDR.F64 D6, [R0]        @ Contador float aux\n";
-                code += "    LDR R0, =lit_1_0\n    VLDR.F64 D7, [R0]        @ Passo 1.0\n";
+                
+                // 1. Pega o N relativo da pilha e joga em D1
+                code += "    VPOP {D1}                @ N (relativo)\n";
+                
+                // 2. Constrói o valor da linha atual (i) em D0 de forma cega/segura
+                code += "    LDR R0, =lit_0_0\n";
+                code += "    VLDR.F64 D0, [R0]        @ D0 = 0.0\n";
+                if (i > 0) {
+                    code += "    LDR R0, =lit_1_0\n";
+                    code += "    VLDR.F64 D2, [R0]        @ D2 = 1.0\n";
+                    for (int k = 0; k < i; ++k) {
+                        code += "    VADD.F64 D0, D0, D2      @ Soma 1.0 para achar a linha atual\n";
+                    }
+                }
+                
+                // 3. MÁGICA: Acha o índice absoluto -> Atual(D0) - Relativo(D1)
+                code += "    VSUB.F64 D0, D0, D1\n";
+                
+                // 4. Continua o Loop para buscar na memória usando o D0 corrigido!
+                code += "    MOV R1, #0               @ Contador inteiro\n";
+                code += "    LDR R0, =lit_0_0\n";
+                code += "    VLDR.F64 D6, [R0]        @ Contador float aux\n";
+                code += "    LDR R0, =lit_1_0\n";
+                code += "    VLDR.F64 D7, [R0]        @ Passo 1.0\n";
                 
                 code += "res_l_" + lid + ":\n";
                 code += "    VCMP.F64 D6, D0          @ Compara: contador >= indice?\n";

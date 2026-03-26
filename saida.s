@@ -185,11 +185,25 @@ trunc_e_8_3:
     VSTR.F64 D0, [R0, #64]
 
     @ --- Linha 9 ---
-    LDR R0, =lit_2
+    LDR R0, =lit_3
     VLDR.F64 D0, [R0]
     VPUSH {D0}
-    VPOP {D0}                @ Valor do indice (float)
-    MOV R1, #0               @ Contador inteiro (resultado final)
+    VPOP {D1}                @ N (relativo)
+    LDR R0, =lit_0_0
+    VLDR.F64 D0, [R0]        @ D0 = 0.0
+    LDR R0, =lit_1_0
+    VLDR.F64 D2, [R0]        @ D2 = 1.0
+    VADD.F64 D0, D0, D2      @ Soma 1.0 para achar a linha atual
+    VADD.F64 D0, D0, D2      @ Soma 1.0 para achar a linha atual
+    VADD.F64 D0, D0, D2      @ Soma 1.0 para achar a linha atual
+    VADD.F64 D0, D0, D2      @ Soma 1.0 para achar a linha atual
+    VADD.F64 D0, D0, D2      @ Soma 1.0 para achar a linha atual
+    VADD.F64 D0, D0, D2      @ Soma 1.0 para achar a linha atual
+    VADD.F64 D0, D0, D2      @ Soma 1.0 para achar a linha atual
+    VADD.F64 D0, D0, D2      @ Soma 1.0 para achar a linha atual
+    VADD.F64 D0, D0, D2      @ Soma 1.0 para achar a linha atual
+    VSUB.F64 D0, D0, D1
+    MOV R1, #0               @ Contador inteiro
     LDR R0, =lit_0_0
     VLDR.F64 D6, [R0]        @ Contador float aux
     LDR R0, =lit_1_0
@@ -207,11 +221,25 @@ res_e_9_3:
     ADD R0, R0, R1           @ R0 = Base + Offset
     VLDR.F64 D0, [R0]        @ Busca o valor no endereco exato
     VPUSH {D0}
-    LDR R0, =lit_6
+    LDR R0, =lit_7
     VLDR.F64 D0, [R0]
     VPUSH {D0}
-    VPOP {D0}                @ Valor do indice (float)
-    MOV R1, #0               @ Contador inteiro (resultado final)
+    VPOP {D1}                @ N (relativo)
+    LDR R0, =lit_0_0
+    VLDR.F64 D0, [R0]        @ D0 = 0.0
+    LDR R0, =lit_1_0
+    VLDR.F64 D2, [R0]        @ D2 = 1.0
+    VADD.F64 D0, D0, D2      @ Soma 1.0 para achar a linha atual
+    VADD.F64 D0, D0, D2      @ Soma 1.0 para achar a linha atual
+    VADD.F64 D0, D0, D2      @ Soma 1.0 para achar a linha atual
+    VADD.F64 D0, D0, D2      @ Soma 1.0 para achar a linha atual
+    VADD.F64 D0, D0, D2      @ Soma 1.0 para achar a linha atual
+    VADD.F64 D0, D0, D2      @ Soma 1.0 para achar a linha atual
+    VADD.F64 D0, D0, D2      @ Soma 1.0 para achar a linha atual
+    VADD.F64 D0, D0, D2      @ Soma 1.0 para achar a linha atual
+    VADD.F64 D0, D0, D2      @ Soma 1.0 para achar a linha atual
+    VSUB.F64 D0, D0, D1
+    MOV R1, #0               @ Contador inteiro
     LDR R0, =lit_0_0
     VLDR.F64 D6, [R0]        @ Contador float aux
     LDR R0, =lit_1_0
@@ -250,9 +278,9 @@ lit_0_0: .double 0.0
 lit_1_0: .double 1.0
 lit_10_0: .double 10.0
 lit_15_0: .double 15.0
-lit_2: .double 2
 lit_2_0: .double 2.0
 lit_20_0: .double 20.0
+lit_3: .double 3
 lit_3_0: .double 3.0
 lit_4_0: .double 4.0
-lit_6: .double 6
+lit_7: .double 7
