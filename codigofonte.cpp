@@ -313,7 +313,7 @@ std::string gerarAssembly(const std::vector<std::vector<Token>>& todasAsLinhas) 
     code += "    VMRS R0, FPEXC\n    ORR  R0, R0, #0x40000000\n    VMSR FPEXC, R0\n\n";
     
     std::set<std::string> literais; 
-    literais.insert("1.0"); // Garantir que o 1.0 existe para nossos loops
+    literais.insert("1.0");
     literais.insert("0.0");
 
     for (int i = 0; i < (int)todasAsLinhas.size(); i++) {
@@ -337,7 +337,7 @@ std::string gerarAssembly(const std::vector<std::vector<Token>>& todasAsLinhas) 
                 else if (t.valor == "*") code += "    VMUL.F64 D2, D0, D1\n";
                 else if (t.valor == "/") code += "    VDIV.F64 D2, D0, D1\n";
                 
-                // --- Divisão Inteira (//) e Resto (%) sem usar VCVT ---
+                // Divisão Inteira (//) e Resto (%)
                 else if (t.valor == "//" || t.valor == "%") {
                     std::string lid = std::to_string(i) + "_" + std::to_string(j);
                     code += "    VDIV.F64 D2, D0, D1      @ D2 = resultado real\n";
@@ -363,13 +363,10 @@ std::string gerarAssembly(const std::vector<std::vector<Token>>& todasAsLinhas) 
                 else if (t.valor == "^") {
                     std::string lid = std::to_string(i) + "_" + std::to_string(j);
                     
-                    // CORREÇÃO: Carregando 1.0 da memória de forma 100% segura!
                     code += "    LDR R0, =lit_1_0\n    VLDR.F64 D2, [R0]\n";
                     
-                    // Configura os contadores
                     code += "    MOV R1, #0\n    LDR R0, =lit_0_0\n    VLDR.F64 D4, [R0]\n    LDR R0, =lit_1_0\n    VLDR.F64 D5, [R0]\n";
                     
-                    // O Loop (Roda D1 vezes)
                     code += "pow_l_" + lid + ":\n";
                     code += "    VCMP.F64 D4, D1\n    VMRS APSR_nzcv, FPSCR\n    BGE pow_e_" + lid + "\n";
                     code += "    VMUL.F64 D2, D2, D0\n    VADD.F64 D4, D4, D5\n    B pow_l_" + lid + "\n";
@@ -431,14 +428,14 @@ std::string gerarAssembly(const std::vector<std::vector<Token>>& todasAsLinhas) 
 //// ALUNO 4
 void exibirResultados(const std::vector<std::string>& linhas, const std::vector<double>& resultados) {
     std::cout << "\n" << std::string(60, '=') << "\n";
-    std::cout << "           RELATORIO FINAL - TRADUTOR RPN -> ARMv7\n";
+    std::cout << "                   TRADUTOR RPN -> ARMv7\n";
     std::cout << std::string(60, '=') << "\n";
     printf(" %-4s | %-32s | %-10s\n", "ID", "EXPRESSAO", "RESULTADO");
     std::cout << std::string(60, '-') << "\n";
 
     for (size_t i = 0; i < linhas.size(); ++i) {
         if (i < resultados.size()) {
-            printf(" %02zu   | %-32s | %.4f\n", i, linhas[i].c_str(), resultados[i]);
+            printf(" %02zu   | %-32s | %.4f\n", i+1, linhas[i].c_str(), resultados[i]);
         }
     }
     std::cout << std::string(60, '=') << "\n";
@@ -447,16 +444,14 @@ void exibirResultados(const std::vector<std::string>& linhas, const std::vector<
 
 //// MAIN
 int main(int argc, char* argv[]) {
-    // 1. Validação de Argumento (Essencial para Aluno 4)
+    // Validação de Argumento
     if(argc != 2) {
-        std::cout << "--------------------------------------------------" << std::endl;
-        std::cout << "ERRO: Arquivo de entrada nao fornecido!" << std::endl;
-        std::cout << "Uso: ./meu_compilador teste.txt" << std::endl;
-        std::cout << "--------------------------------------------------" << std::endl;
+        std::cout << "\nERRO: Arquivo de entrada nao fornecido!" << std::endl;
+        std::cout << "Uso: ./meu_compilador teste.txt\n" << std::endl;
         return 1;
     }
 
-    // 2. Leitura (Aluno 3)
+    // Leitura
     std::vector<std::string> linhas;
     lerArquivo(argv[1], linhas);
     if (linhas.empty()) return 1;
@@ -464,18 +459,18 @@ int main(int argc, char* argv[]) {
     std::vector<std::vector<Token>> todasAsLinhas;
     std::vector<Token> listaGeralTokens;
 
-    // 3. Processamento (Alunos 1 e 2)
+    // Processamento
     for (const std::string& l : linhas) {
         std::vector<Token> tokens;
         parseExpressao(l, tokens);
         if (!tokens.empty()) {
-            executarExpressao(tokens); // Aqui o históricoRES é preenchido
+            executarExpressao(tokens);
             todasAsLinhas.push_back(tokens);
             for(auto t : tokens) listaGeralTokens.push_back(t);
         }
     }
 
-    // 4. Geração de Arquivos (Aluno 3)
+    // Geração de Arquivos
     std::string assembly = gerarAssembly(todasAsLinhas);
     std::ofstream outAsm("saida.s");
     outAsm << assembly;
@@ -485,7 +480,7 @@ int main(int argc, char* argv[]) {
     for(auto t : listaGeralTokens) outTok << t.tipo << "," << t.valor << "\n";
     outTok.close();
 
-    // 5. EXIBIÇÃO FINAL (A cara do Aluno 4)
+    // Exibição
     exibirResultados(linhas, historicoRES);
 
     return 0;
